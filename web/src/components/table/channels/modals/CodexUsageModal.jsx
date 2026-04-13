@@ -401,7 +401,7 @@ const CodexUsageView = ({ t, record, payload, onCopy, onRefresh }) => {
   );
 };
 
-const CodexUsageLoader = ({ t, record, initialPayload, onCopy }) => {
+const CodexUsageLoader = ({ t, record, initialPayload, onCopy, onDataLoaded }) => {
   const tt = typeof t === 'function' ? t : (v) => v;
   const [loading, setLoading] = useState(!initialPayload);
   const [payload, setPayload] = useState(initialPayload ?? null);
@@ -421,7 +421,12 @@ const CodexUsageLoader = ({ t, record, initialPayload, onCopy }) => {
         skipErrorHandler: true,
       });
       if (!mountedRef.current) return;
-      setPayload(res?.data ?? null);
+      const data = res?.data ?? null;
+      setPayload(data);
+      // Call onDataLoaded callback to cache the data
+      if (data && onDataLoaded) {
+        onDataLoaded(recordId, data);
+      }
       if (!res?.data?.success && !hasShownErrorRef.current) {
         hasShownErrorRef.current = true;
         showError(tt('获取用量失败'));
@@ -436,7 +441,7 @@ const CodexUsageLoader = ({ t, record, initialPayload, onCopy }) => {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [recordId, tt]);
+  }, [recordId, tt, onDataLoaded]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -487,7 +492,7 @@ const CodexUsageLoader = ({ t, record, initialPayload, onCopy }) => {
   );
 };
 
-export const openCodexUsageModal = ({ t, record, payload, onCopy }) => {
+export const openCodexUsageModal = ({ t, record, payload, onCopy, onDataLoaded }) => {
   const tt = typeof t === 'function' ? t : (v) => v;
 
   Modal.info({
@@ -501,6 +506,7 @@ export const openCodexUsageModal = ({ t, record, payload, onCopy }) => {
         record={record}
         initialPayload={payload}
         onCopy={onCopy}
+        onDataLoaded={onDataLoaded}
       />
     ),
     footer: (

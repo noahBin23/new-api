@@ -118,6 +118,9 @@ export const useChannelsData = () => {
   const [showMultiKeyManageModal, setShowMultiKeyManageModal] = useState(false);
   const [currentMultiKeyChannel, setCurrentMultiKeyChannel] = useState(null);
 
+  // Codex usage cache - stores usage data for codex channels
+  const [codexUsageCache, setCodexUsageCache] = useState({});
+
   // Refs
   const requestCounter = useRef(0);
   const allSelectingRef = useRef(false);
@@ -763,6 +766,16 @@ export const useChannelsData = () => {
           if (ok) showSuccess(t('已复制'));
           else showError(t('复制失败'));
         },
+        onDataLoaded: (channelId, data) => {
+          // Cache the codex usage data
+          setCodexUsageCache((prev) => ({
+            ...prev,
+            [channelId]: {
+              data,
+              timestamp: Date.now(),
+            },
+          }));
+        },
       });
       return;
     }
@@ -1204,6 +1217,9 @@ export const useChannelsData = () => {
     currentMultiKeyChannel,
     setCurrentMultiKeyChannel,
     ...upstreamUpdates,
+
+    // Codex usage cache
+    codexUsageCache,
 
     // Form
     formApi,

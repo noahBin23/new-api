@@ -63,6 +63,8 @@ const ChannelsTable = (channelsData) => {
     setCurrentMultiKeyChannel,
     openUpstreamUpdateModal,
     detectChannelUpstreamUpdates,
+    // Codex usage cache
+    codexUsageCache,
   } = channelsData;
 
   // Get all columns
@@ -90,6 +92,7 @@ const ChannelsTable = (channelsData) => {
       setCurrentMultiKeyChannel,
       openUpstreamUpdateModal,
       detectChannelUpstreamUpdates,
+      codexUsageCache,
     });
   }, [
     t,
@@ -114,6 +117,7 @@ const ChannelsTable = (channelsData) => {
     setCurrentMultiKeyChannel,
     openUpstreamUpdateModal,
     detectChannelUpstreamUpdates,
+    codexUsageCache,
   ]);
 
   // Filter columns based on visibility settings
