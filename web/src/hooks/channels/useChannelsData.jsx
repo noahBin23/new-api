@@ -118,6 +118,9 @@ export const useChannelsData = () => {
   const [showMultiKeyManageModal, setShowMultiKeyManageModal] = useState(false);
   const [currentMultiKeyChannel, setCurrentMultiKeyChannel] = useState(null);
 
+  // Codex usage cache - stores usage data for codex channels
+  const [codexUsageCache, setCodexUsageCache] = useState({});
+
   // Refs
   const requestCounter = useRef(0);
   const allSelectingRef = useRef(false);
@@ -366,6 +369,8 @@ export const useChannelsData = () => {
       }
       setChannelFormat(items, enableTagMode);
       setChannelCount(total);
+      // Auto-fetch codex usage for codex channels
+      fetchCodexUsageForChannels(items);
     } else {
       showError(message);
     }
@@ -412,6 +417,8 @@ export const useChannelsData = () => {
         setChannelFormat(items, enableTagMode);
         setChannelCount(total);
         setActivePage(page);
+        // Auto-fetch codex usage for codex channels
+        fetchCodexUsageForChannels(items);
       } else {
         showError(message);
       }
@@ -753,6 +760,64 @@ export const useChannelsData = () => {
     }
   };
 
+  // Fetch codex usage for all codex channels
+  const fetchCodexUsageForChannels = async (channelList) => {
+    if (!channelList || channelList.length === 0) return;
+    
+    // Find all codex channels (type 57)
+    const codexChannels = channelList.filter((ch) => {
+      if (ch.type === 57 && ch.children === undefined) return true;
+      if (ch.children) {
+        return ch.children.some((child) => child.type === 57);
+      }
+      return false;
+    });
+    
+    if (codexChannels.length === 0) return;
+    
+    // Flatten to get individual codex channels
+    const channelsToFetch = [];
+    codexChannels.forEach((ch) => {
+      if (ch.type === 57 && ch.children === undefined) {
+        channelsToFetch.push(ch);
+      } else if (ch.children) {
+        ch.children.forEach((child) => {
+          if (child.type === 57) {
+            channelsToFetch.push(child);
+          }
+        });
+      }
+    });
+    
+    // Fetch usage for each codex channel (with concurrency limit)
+    const concurrencyLimit = 3;
+    for (let i = 0; i < channelsToFetch.length; i += concurrencyLimit) {
+      const batch = channelsToFetch.slice(i, i + concurrencyLimit);
+      await Promise.allSettled(
+        batch.map(async (channel) => {
+          try {
+            const res = await API.get(`/api/channel/${channel.id}/codex/usage`, {
+              skipErrorHandler: true,
+            });
+            // Cache data even if success is false, so we can show appropriate UI state
+            if (res?.data) {
+              setCodexUsageCache((prev) => ({
+                ...prev,
+                [channel.id]: {
+                  data: res.data,
+                  timestamp: Date.now(),
+                },
+              }));
+            }
+          } catch (error) {
+            // Silently fail for auto-fetch - no error message shown
+            console.debug(`Auto-fetch codex usage failed for channel ${channel.id}`);
+          }
+        })
+      );
+    }
+  };
+
   const updateChannelBalance = async (record) => {
     if (record?.type === 57) {
       openCodexUsageModal({
@@ -762,6 +827,16 @@ export const useChannelsData = () => {
           const ok = await copy(text);
           if (ok) showSuccess(t('已复制'));
           else showError(t('复制失败'));
+        },
+        onDataLoaded: (channelId, data) => {
+          // Cache the codex usage data
+          setCodexUsageCache((prev) => ({
+            ...prev,
+            [channelId]: {
+              data,
+              timestamp: Date.now(),
+            },
+          }));
         },
       });
       return;
@@ -1204,6 +1279,9 @@ export const useChannelsData = () => {
     currentMultiKeyChannel,
     setCurrentMultiKeyChannel,
     ...upstreamUpdates,
+
+    // Codex usage cache
+    codexUsageCache,
 
     // Form
     formApi,

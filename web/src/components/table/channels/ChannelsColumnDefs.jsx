@@ -51,6 +51,70 @@ import {
 } from '@douyinfe/semi-icons';
 import { FaRandom } from 'react-icons/fa';
 
+// Helper functions for Codex usage display
+const formatDurationShort = (seconds) => {
+  const s = Number(seconds);
+  if (!Number.isFinite(s) || s <= 0) return '-';
+  const total = Math.floor(s);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours > 0) return `${hours}h${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${total}s`;
+};
+
+const resolveCodexUsageInfo = (cachedData) => {
+  if (!cachedData || !cachedData.data) return null;
+  
+  const payload = cachedData.data;
+  if (!payload.success) return null;
+  
+  const data = payload.data ?? null;
+  if (!data) return null;
+  
+  const rateLimit = data.rate_limit ?? {};
+  const planType = String(data.plan_type ?? rateLimit?.plan_type ?? '').trim().toLowerCase();
+  
+  // Resolve rate limit windows
+  const primary = rateLimit?.primary_window ?? null;
+  const secondary = rateLimit?.secondary_window ?? null;
+  const windows = [primary, secondary].filter(Boolean);
+  
+  let fiveHourWindow = null;
+  let weeklyWindow = null;
+  
+  for (const windowData of windows) {
+    const seconds = Number(windowData?.limit_window_seconds);
+    if (!Number.isFinite(seconds) || seconds <= 0) continue;
+    
+    if (seconds >= 24 * 60 * 60) {
+      if (!weeklyWindow) weeklyWindow = windowData;
+    } else {
+      if (!fiveHourWindow) fiveHourWindow = windowData;
+    }
+  }
+  
+  if (planType === 'free') {
+    if (!weeklyWindow) {
+      weeklyWindow = primary ?? secondary ?? null;
+    }
+    fiveHourWindow = null;
+  }
+  
+  // Extract key metrics
+  const result = {
+    planType,
+    fiveHourPercent: fiveHourWindow?.used_percent ?? null,
+    fiveHourResetAfter: fiveHourWindow?.reset_after_seconds ?? null,
+    weeklyPercent: weeklyWindow?.used_percent ?? null,
+    weeklyResetAfter: weeklyWindow?.reset_after_seconds ?? null,
+    allowed: rateLimit?.allowed ?? null,
+    limitReached: rateLimit?.limit_reached ?? null,
+  };
+  
+  return result;
+};
+
 // Render functions
 const renderType = (type, record = {}, t) => {
   const channelInfo = record?.channel_info;
@@ -327,6 +391,7 @@ export const getChannelsColumns = ({
   setCurrentMultiKeyChannel,
   openUpstreamUpdateModal,
   detectChannelUpstreamUpdates,
+  codexUsageCache,
 }) => {
   return [
     {
@@ -528,6 +593,109 @@ export const getChannelsColumns = ({
       dataIndex: 'expired_time',
       render: (text, record, index) => {
         if (record.children === undefined) {
+          // For Codex channels, show cached usage info if available
+          if (record.type === 57) {
+            const cachedUsage = codexUsageCache?.[record.id];
+            const usageInfo = resolveCodexUsageInfo(cachedUsage);
+            
+            if (usageInfo) {
+              const hasFiveHour = usageInfo.fiveHourPercent !== null;
+              const hasWeekly = usageInfo.weeklyPercent !== null;
+              
+              const tooltipContent = (
+                <div className='flex flex-col gap-1'>
+                  <div className='font-medium'>{t('Codex 用量')}</div>
+                  {usageInfo.planType && (
+                    <div>{t('套餐')}: {usageInfo.planType.toUpperCase()}</div>
+                  )}
+                  {hasFiveHour && (
+                    <div>
+                      {t('5小时窗口')}: {usageInfo.fiveHourPercent.toFixed(1)}% 
+                      {usageInfo.fiveHourResetAfter > 0 && 
+                        ` (${formatDurationShort(usageInfo.fiveHourResetAfter)} ${t('后重置')})`
+                      }
+                    </div>
+                  )}
+                  {hasWeekly && (
+                    <div>
+                      {t('每周窗口')}: {usageInfo.weeklyPercent.toFixed(1)}%
+                      {usageInfo.weeklyResetAfter > 0 && 
+                        ` (${formatDurationShort(usageInfo.weeklyResetAfter)} ${t('后重置')})`
+                      }
+                    </div>
+                  )}
+                  <div className='text-xs text-gray-500 mt-1'>{t('点击刷新')}</div>
+                </div>
+              );
+              
+              return (
+                <div>
+                  <Space spacing={1}>
+                    <Tooltip content={tooltipContent}>
+                      <Tag
+                        color='light-blue'
+                        type='light'
+                        shape='circle'
+                        className='cursor-pointer'
+                        onClick={() => updateChannelBalance(record)}
+                      >
+                        {hasFiveHour && (
+                          <span>{usageInfo.fiveHourPercent.toFixed(0)}%</span>
+                        )}
+                        {hasFiveHour && hasWeekly && <span>/</span>}
+                        {hasWeekly && (
+                          <span>{usageInfo.weeklyPercent.toFixed(0)}%</span>
+                        )}
+                        {!hasFiveHour && !hasWeekly && (
+                          <span>{t('帐号信息')}</span>
+                        )}
+                      </Tag>
+                    </Tooltip>
+                    {hasFiveHour && usageInfo.fiveHourResetAfter > 0 && (
+                      <Tooltip content={t('5小时窗口重置时间')}>
+                        <Tag color='white' type='ghost' shape='circle' size='small'>
+                          {formatDurationShort(usageInfo.fiveHourResetAfter)}
+                        </Tag>
+                      </Tooltip>
+                    )}
+                    {hasWeekly && usageInfo.weeklyResetAfter > 0 && (
+                      <Tooltip content={t('每周窗口重置时间')}>
+                        <Tag color='white' type='ghost' shape='circle' size='small'>
+                          {formatDurationShort(usageInfo.weeklyResetAfter)}
+                        </Tag>
+                      </Tooltip>
+                    )}
+                  </Space>
+                </div>
+              );
+            }
+            
+            // No cached data, show default button
+            return (
+              <div>
+                <Space spacing={1}>
+                  <Tooltip content={t('已用额度')}>
+                    <Tag color='white' type='ghost' shape='circle'>
+                      {renderQuota(record.used_quota)}
+                    </Tag>
+                  </Tooltip>
+                  <Tooltip content={t('查看 Codex 帐号信息与用量')}>
+                    <Tag
+                      color='light-blue'
+                      type='light'
+                      shape='circle'
+                      className='cursor-pointer'
+                      onClick={() => updateChannelBalance(record)}
+                    >
+                      {t('帐号信息')}
+                    </Tag>
+                  </Tooltip>
+                </Space>
+              </div>
+            );
+          }
+          
+          // Non-Codex channels
           return (
             <div>
               <Space spacing={1}>
@@ -538,24 +706,19 @@ export const getChannelsColumns = ({
                 </Tooltip>
                 <Tooltip
                   content={
-                    record.type === 57
-                      ? t('查看 Codex 帐号信息与用量')
-                      : t('剩余额度') +
-                        ': ' +
-                        renderQuotaWithAmount(record.balance) +
-                        t('，点击更新')
+                    t('剩余额度') +
+                    ': ' +
+                    renderQuotaWithAmount(record.balance) +
+                    t('，点击更新')
                   }
                 >
                   <Tag
-                    color={record.type === 57 ? 'light-blue' : 'white'}
-                    type={record.type === 57 ? 'light' : 'ghost'}
+                    color='white'
+                    type='ghost'
                     shape='circle'
-                    className={record.type === 57 ? 'cursor-pointer' : ''}
                     onClick={() => updateChannelBalance(record)}
                   >
-                    {record.type === 57
-                      ? t('帐号信息')
-                      : renderQuotaWithAmount(record.balance)}
+                    {renderQuotaWithAmount(record.balance)}
                   </Tag>
                 </Tooltip>
               </Space>
