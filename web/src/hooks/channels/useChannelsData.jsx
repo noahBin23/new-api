@@ -369,6 +369,8 @@ export const useChannelsData = () => {
       }
       setChannelFormat(items, enableTagMode);
       setChannelCount(total);
+      // Auto-fetch codex usage for codex channels
+      fetchCodexUsageForChannels(items);
     } else {
       showError(message);
     }
@@ -415,6 +417,8 @@ export const useChannelsData = () => {
         setChannelFormat(items, enableTagMode);
         setChannelCount(total);
         setActivePage(page);
+        // Auto-fetch codex usage for codex channels
+        fetchCodexUsageForChannels(items);
       } else {
         showError(message);
       }
@@ -753,6 +757,63 @@ export const useChannelsData = () => {
       showInfo(t('已更新完毕所有已启用通道余额！'));
     } else {
       showError(message);
+    }
+  };
+
+  // Fetch codex usage for all codex channels
+  const fetchCodexUsageForChannels = async (channelList) => {
+    if (!channelList || channelList.length === 0) return;
+    
+    // Find all codex channels (type 57)
+    const codexChannels = channelList.filter((ch) => {
+      if (ch.type === 57 && ch.children === undefined) return true;
+      if (ch.children) {
+        return ch.children.some((child) => child.type === 57);
+      }
+      return false;
+    });
+    
+    if (codexChannels.length === 0) return;
+    
+    // Flatten to get individual codex channels
+    const channelsToFetch = [];
+    codexChannels.forEach((ch) => {
+      if (ch.type === 57 && ch.children === undefined) {
+        channelsToFetch.push(ch);
+      } else if (ch.children) {
+        ch.children.forEach((child) => {
+          if (child.type === 57) {
+            channelsToFetch.push(child);
+          }
+        });
+      }
+    });
+    
+    // Fetch usage for each codex channel (with concurrency limit)
+    const concurrencyLimit = 3;
+    for (let i = 0; i < channelsToFetch.length; i += concurrencyLimit) {
+      const batch = channelsToFetch.slice(i, i + concurrencyLimit);
+      await Promise.allSettled(
+        batch.map(async (channel) => {
+          try {
+            const res = await API.get(`/api/channel/${channel.id}/codex/usage`, {
+              skipErrorHandler: true,
+            });
+            if (res?.data) {
+              setCodexUsageCache((prev) => ({
+                ...prev,
+                [channel.id]: {
+                  data: res.data,
+                  timestamp: Date.now(),
+                },
+              }));
+            }
+          } catch (error) {
+            // Silently fail for auto-fetch
+            console.error(`Failed to fetch codex usage for channel ${channel.id}:`, error);
+          }
+        })
+      );
     }
   };
 
