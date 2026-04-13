@@ -799,6 +799,7 @@ export const useChannelsData = () => {
             const res = await API.get(`/api/channel/${channel.id}/codex/usage`, {
               skipErrorHandler: true,
             });
+            // Cache data even if success is false, so we can show appropriate UI state
             if (res?.data) {
               setCodexUsageCache((prev) => ({
                 ...prev,
@@ -809,8 +810,8 @@ export const useChannelsData = () => {
               }));
             }
           } catch (error) {
-            // Silently fail for auto-fetch
-            console.error(`Failed to fetch codex usage for channel ${channel.id}:`, error);
+            // Silently fail for auto-fetch - no error message shown
+            console.debug(`Auto-fetch codex usage failed for channel ${channel.id}`);
           }
         })
       );

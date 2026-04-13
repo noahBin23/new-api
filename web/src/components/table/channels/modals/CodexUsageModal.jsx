@@ -282,6 +282,13 @@ const CodexUsageView = ({ t, record, payload, onCopy, onRefresh }) => {
   const rawText =
     typeof data === 'string' ? data : JSON.stringify(data ?? payload, null, 2);
 
+  // Wrapper for user-initiated refresh
+  const handleUserRefresh = () => {
+    if (onRefresh) {
+      onRefresh(true); // Pass true to indicate user action
+    }
+  };
+
   return (
     <div className='flex flex-col gap-4'>
       {errorMessage && (
@@ -313,7 +320,7 @@ const CodexUsageView = ({ t, record, payload, onCopy, onRefresh }) => {
               </Tag>
             </div>
           </div>
-          <Button size='small' type='tertiary' theme='outline' onClick={onRefresh}>
+          <Button size='small' type='tertiary' theme='outline' onClick={handleUserRefresh}>
             {tt('刷新')}
           </Button>
         </div>
@@ -405,17 +412,19 @@ const CodexUsageLoader = ({ t, record, initialPayload, onCopy, onDataLoaded }) =
   const tt = typeof t === 'function' ? t : (v) => v;
   const [loading, setLoading] = useState(!initialPayload);
   const [payload, setPayload] = useState(initialPayload ?? null);
-  const hasShownErrorRef = useRef(false);
   const mountedRef = useRef(true);
   const recordId = record?.id;
+  // Track if this is user-initiated refresh (show errors) vs auto-load (silent)
+  const isUserRefreshRef = useRef(false);
 
-  const fetchUsage = useCallback(async () => {
+  const fetchUsage = useCallback(async (isUserAction = false) => {
     if (!recordId) {
       if (mountedRef.current) setPayload(null);
       return;
     }
 
     if (mountedRef.current) setLoading(true);
+    isUserRefreshRef.current = isUserAction;
     try {
       const res = await API.get(`/api/channel/${recordId}/codex/usage`, {
         skipErrorHandler: true,
@@ -427,14 +436,14 @@ const CodexUsageLoader = ({ t, record, initialPayload, onCopy, onDataLoaded }) =
       if (data && onDataLoaded) {
         onDataLoaded(recordId, data);
       }
-      if (!res?.data?.success && !hasShownErrorRef.current) {
-        hasShownErrorRef.current = true;
+      // Only show error for user-initiated actions
+      if (!res?.data?.success && isUserAction) {
         showError(tt('获取用量失败'));
       }
     } catch (error) {
       if (!mountedRef.current) return;
-      if (!hasShownErrorRef.current) {
-        hasShownErrorRef.current = true;
+      // Only show error for user-initiated actions
+      if (isUserAction) {
         showError(tt('获取用量失败'));
       }
       setPayload({ success: false, message: String(error) });
@@ -472,7 +481,7 @@ const CodexUsageLoader = ({ t, record, initialPayload, onCopy, onDataLoaded }) =
             size='small'
             type='primary'
             theme='outline'
-            onClick={fetchUsage}
+            onClick={() => fetchUsage(true)}
           >
             {tt('刷新')}
           </Button>
