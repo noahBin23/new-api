@@ -392,6 +392,7 @@ export const getChannelsColumns = ({
   openUpstreamUpdateModal,
   detectChannelUpstreamUpdates,
   codexUsageCache,
+  codexLoadingState,
 }) => {
   return [
     {
@@ -598,40 +599,61 @@ export const getChannelsColumns = ({
             const cachedUsage = codexUsageCache?.[record.id];
             const usageInfo = resolveCodexUsageInfo(cachedUsage);
             
+            // Build detailed tooltip content
+            const buildTooltipContent = () => (
+              <div className='flex flex-col gap-2 min-w-[200px]'>
+                <div className='font-medium text-sm border-b pb-1'>{t('Codex 用量详情')}</div>
+                <div className='flex justify-between'>
+                  <span className='text-gray-500'>{t('已用额度')}:</span>
+                  <span className='font-medium'>{renderQuota(record.used_quota)}</span>
+                </div>
+                {usageInfo?.planType && (
+                  <div className='flex justify-between'>
+                    <span className='text-gray-500'>{t('套餐')}:</span>
+                    <span className='font-medium'>{usageInfo.planType.toUpperCase()}</span>
+                  </div>
+                )}
+                {usageInfo?.fiveHourPercent !== null && (
+                  <div className='flex justify-between'>
+                    <span className='text-gray-500'>{t('5小时窗口')}:</span>
+                    <span className='font-medium'>
+                      {usageInfo.fiveHourPercent.toFixed(1)}%
+                      {usageInfo.fiveHourResetAfter > 0 && 
+                        ` (${formatDurationShort(usageInfo.fiveHourResetAfter)})`
+                      }
+                    </span>
+                  </div>
+                )}
+                {usageInfo?.weeklyPercent !== null && (
+                  <div className='flex justify-between'>
+                    <span className='text-gray-500'>{t('每周窗口')}:</span>
+                    <span className='font-medium'>
+                      {usageInfo.weeklyPercent.toFixed(1)}%
+                      {usageInfo.weeklyResetAfter > 0 && 
+                        ` (${formatDurationShort(usageInfo.weeklyResetAfter)})`
+                      }
+                    </span>
+                  </div>
+                )}
+                <div className='text-xs text-gray-400 mt-1 pt-1 border-t'>{t('点击刷新')}</div>
+              </div>
+            );
+            
             if (usageInfo) {
               const hasFiveHour = usageInfo.fiveHourPercent !== null;
               const hasWeekly = usageInfo.weeklyPercent !== null;
               
-              const tooltipContent = (
-                <div className='flex flex-col gap-1'>
-                  <div className='font-medium'>{t('Codex 用量')}</div>
-                  {usageInfo.planType && (
-                    <div>{t('套餐')}: {usageInfo.planType.toUpperCase()}</div>
-                  )}
-                  {hasFiveHour && (
-                    <div>
-                      {t('5小时窗口')}: {usageInfo.fiveHourPercent.toFixed(1)}% 
-                      {usageInfo.fiveHourResetAfter > 0 && 
-                        ` (${formatDurationShort(usageInfo.fiveHourResetAfter)} ${t('后重置')})`
-                      }
-                    </div>
-                  )}
-                  {hasWeekly && (
-                    <div>
-                      {t('每周窗口')}: {usageInfo.weeklyPercent.toFixed(1)}%
-                      {usageInfo.weeklyResetAfter > 0 && 
-                        ` (${formatDurationShort(usageInfo.weeklyResetAfter)} ${t('后重置')})`
-                      }
-                    </div>
-                  )}
-                  <div className='text-xs text-gray-500 mt-1'>{t('点击刷新')}</div>
-                </div>
-              );
-              
               return (
                 <div>
-                  <Space spacing={1}>
-                    <Tooltip content={tooltipContent}>
+                  <Space spacing={2}>
+                    {/* Used quota */}
+                    <Tooltip content={t('已用额度')}>
+                      <Tag color='white' type='ghost' shape='circle'>
+                        {renderQuota(record.used_quota)}
+                      </Tag>
+                    </Tooltip>
+                    {/* Usage percentage */}
+                    <Tooltip content={buildTooltipContent()}>
                       <Tag
                         color='light-blue'
                         type='light'
@@ -642,7 +664,7 @@ export const getChannelsColumns = ({
                         {hasFiveHour && (
                           <span>{usageInfo.fiveHourPercent.toFixed(0)}%</span>
                         )}
-                        {hasFiveHour && hasWeekly && <span>/</span>}
+                        {hasFiveHour && hasWeekly && <span className='mx-0.5'>/</span>}
                         {hasWeekly && (
                           <span>{usageInfo.weeklyPercent.toFixed(0)}%</span>
                         )}
@@ -651,16 +673,17 @@ export const getChannelsColumns = ({
                         )}
                       </Tag>
                     </Tooltip>
+                    {/* Reset time badges */}
                     {hasFiveHour && usageInfo.fiveHourResetAfter > 0 && (
                       <Tooltip content={t('5小时窗口重置时间')}>
-                        <Tag color='white' type='ghost' shape='circle' size='small'>
+                        <Tag color='cyan' type='light' shape='circle' size='small'>
                           {formatDurationShort(usageInfo.fiveHourResetAfter)}
                         </Tag>
                       </Tooltip>
                     )}
                     {hasWeekly && usageInfo.weeklyResetAfter > 0 && (
                       <Tooltip content={t('每周窗口重置时间')}>
-                        <Tag color='white' type='ghost' shape='circle' size='small'>
+                        <Tag color='purple' type='light' shape='circle' size='small'>
                           {formatDurationShort(usageInfo.weeklyResetAfter)}
                         </Tag>
                       </Tooltip>
@@ -670,7 +693,12 @@ export const getChannelsColumns = ({
               );
             }
             
-            // No cached data, show default button
+            // Check loading state
+            const loadingState = codexLoadingState?.[record.id];
+            const isLoading = loadingState?.loading;
+            const hasError = loadingState?.error;
+            
+            // No cached data, show loading/error/default state
             return (
               <div>
                 <Space spacing={1}>
@@ -679,17 +707,41 @@ export const getChannelsColumns = ({
                       {renderQuota(record.used_quota)}
                     </Tag>
                   </Tooltip>
-                  <Tooltip content={t('查看 Codex 帐号信息与用量')}>
-                    <Tag
-                      color='light-blue'
-                      type='light'
-                      shape='circle'
-                      className='cursor-pointer'
-                      onClick={() => updateChannelBalance(record)}
-                    >
-                      {t('帐号信息')}
+                  {isLoading ? (
+                    <Tag color='light-blue' type='light' shape='circle'>
+                      <span className='inline-flex items-center gap-1'>
+                        <svg className='animate-spin h-3 w-3' viewBox='0 0 24 24'>
+                          <circle className='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='4' fill='none'/>
+                          <path className='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'/>
+                        </svg>
+                        {t('加载中')}
+                      </span>
                     </Tag>
-                  </Tooltip>
+                  ) : hasError ? (
+                    <Tooltip content={t('点击重试')}>
+                      <Tag
+                        color='red'
+                        type='light'
+                        shape='circle'
+                        className='cursor-pointer'
+                        onClick={() => updateChannelBalance(record)}
+                      >
+                        {t('加载失败')}
+                      </Tag>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip content={t('查看 Codex 帐号信息与用量')}>
+                      <Tag
+                        color='light-blue'
+                        type='light'
+                        shape='circle'
+                        className='cursor-pointer'
+                        onClick={() => updateChannelBalance(record)}
+                      >
+                        {t('帐号信息')}
+                      </Tag>
+                    </Tooltip>
+                  )}
                 </Space>
               </div>
             );

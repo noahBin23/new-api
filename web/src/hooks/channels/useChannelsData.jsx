@@ -120,6 +120,8 @@ export const useChannelsData = () => {
 
   // Codex usage cache - stores usage data for codex channels
   const [codexUsageCache, setCodexUsageCache] = useState({});
+  // Codex loading state - tracks which channels are loading
+  const [codexLoadingState, setCodexLoadingState] = useState({});
 
   // Refs
   const requestCounter = useRef(0);
@@ -789,6 +791,15 @@ export const useChannelsData = () => {
       }
     });
     
+    // Set loading state for all channels
+    setCodexLoadingState((prev) => {
+      const newState = { ...prev };
+      channelsToFetch.forEach((ch) => {
+        newState[ch.id] = { loading: true, error: null };
+      });
+      return newState;
+    });
+    
     // Fetch usage for each codex channel (with concurrency limit)
     const concurrencyLimit = 3;
     for (let i = 0; i < channelsToFetch.length; i += concurrencyLimit) {
@@ -808,10 +819,26 @@ export const useChannelsData = () => {
                   timestamp: Date.now(),
                 },
               }));
+              // Update loading state - success
+              setCodexLoadingState((prev) => ({
+                ...prev,
+                [channel.id]: { loading: false, error: null },
+              }));
+            } else {
+              // Update loading state - no data
+              setCodexLoadingState((prev) => ({
+                ...prev,
+                [channel.id]: { loading: false, error: 'no_data' },
+              }));
             }
           } catch (error) {
             // Silently fail for auto-fetch - no error message shown
             console.debug(`Auto-fetch codex usage failed for channel ${channel.id}`);
+            // Update loading state - error
+            setCodexLoadingState((prev) => ({
+              ...prev,
+              [channel.id]: { loading: false, error: 'fetch_failed' },
+            }));
           }
         })
       );
@@ -1282,6 +1309,7 @@ export const useChannelsData = () => {
 
     // Codex usage cache
     codexUsageCache,
+    codexLoadingState,
 
     // Form
     formApi,
