@@ -392,6 +392,7 @@ export const getChannelsColumns = ({
   openUpstreamUpdateModal,
   detectChannelUpstreamUpdates,
   codexUsageCache,
+  codexLoadingState,
 }) => {
   return [
     {
@@ -692,7 +693,12 @@ export const getChannelsColumns = ({
               );
             }
             
-            // No cached data, show default button
+            // Check loading state
+            const loadingState = codexLoadingState?.[record.id];
+            const isLoading = loadingState?.loading;
+            const hasError = loadingState?.error;
+            
+            // No cached data, show loading/error/default state
             return (
               <div>
                 <Space spacing={1}>
@@ -701,17 +707,41 @@ export const getChannelsColumns = ({
                       {renderQuota(record.used_quota)}
                     </Tag>
                   </Tooltip>
-                  <Tooltip content={t('查看 Codex 帐号信息与用量')}>
-                    <Tag
-                      color='light-blue'
-                      type='light'
-                      shape='circle'
-                      className='cursor-pointer'
-                      onClick={() => updateChannelBalance(record)}
-                    >
-                      {t('帐号信息')}
+                  {isLoading ? (
+                    <Tag color='light-blue' type='light' shape='circle'>
+                      <span className='inline-flex items-center gap-1'>
+                        <svg className='animate-spin h-3 w-3' viewBox='0 0 24 24'>
+                          <circle className='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='4' fill='none'/>
+                          <path className='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'/>
+                        </svg>
+                        {t('加载中')}
+                      </span>
                     </Tag>
-                  </Tooltip>
+                  ) : hasError ? (
+                    <Tooltip content={t('点击重试')}>
+                      <Tag
+                        color='red'
+                        type='light'
+                        shape='circle'
+                        className='cursor-pointer'
+                        onClick={() => updateChannelBalance(record)}
+                      >
+                        {t('加载失败')}
+                      </Tag>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip content={t('查看 Codex 帐号信息与用量')}>
+                      <Tag
+                        color='light-blue'
+                        type='light'
+                        shape='circle'
+                        className='cursor-pointer'
+                        onClick={() => updateChannelBalance(record)}
+                      >
+                        {t('帐号信息')}
+                      </Tag>
+                    </Tooltip>
+                  )}
                 </Space>
               </div>
             );
